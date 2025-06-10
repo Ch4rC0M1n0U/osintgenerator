@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  osint-profile-generator:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - FRONTEND_URL=http://localhost:3001
+    volumes:
+      - ./data:/app/server/data
+      - ./backups:/app/backups
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    networks:
+      - osint-network
+
+  # Backup service
+  backup:
+    image: alpine:latest
+    volumes:
+      - ./data:/data
+      - ./backups:/backups
+    command: >
+      sh -c "
+        while true; do
+          echo 'Creating backup...'
+          tar -czf /backups/backup-$$(date +%Y%m%d-%H%M%S).tar.gz -C /data .
+          echo 'Backup created'
+          # Keep only last 7 backups
+          ls -t /backups/backup-*.tar.gz | tail -n +8 | xargs -r rm
+          sleep 86400
+        done
+      "
+    restart: unless-stopped
+    networks:
+      - osint-network
+
+networks:
+  osint-network:
+    driver: bridge
+
+volumes:
+  data:
+  backups:
